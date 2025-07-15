@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Advanced Subdomain Generator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#121212" />
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #fff;
+      padding: 20px;
+    }
+    input, select, textarea, button {
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 5px;
+      border: none;
+    }
+    input, select, textarea {
+      width: 100%;
+      background: #1f1f1f;
+      color: #fff;
+    }
+    button {
+      background-color: #2196F3;
+      color: white;
+      width: 100%;
+      cursor: pointer;
+    }
+    .output, .history {
+      background: #1f1f1f;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 10px;
+      word-break: break-word;
+    }
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #333;
+      padding: 5px 0;
+      gap: 10px;
+    }
+    .history-item span {
+      flex: 1 1 auto;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: normal;
+    }
+    .pin-btn {
+      flex: 0 0 auto;
+      min-width: 40px;
+      max-width: 40px;
+      padding: 5px;
+      white-space: nowrap;
+      text-align: center;
+      cursor: pointer;
+      border-radius: 4px;
+      background: #444;
+      color: #fff;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Advanced Subdomain Generator</h2>
+
+  <input type="text" id="mainDomain" placeholder="Main Domain (e.g. example.com)" />
+
+  <select id="genType" onchange="toggleIPLengthVisibility()">
+    <option value="numbers">IP-style Numbers</option>
+    <option value="keywords">Random Keywords</option>
+    <option value="mixed">Mixed (Words + Numbers)</option>
+  </select>
+
+  <select id="separator">
+    <option value=".">Dot ( . )</option>
+    <option value="-">Dash ( - )</option>
+    <option value="_">Underscore ( _ )</option>
+  </select>
+
+  <select id="caseStyle">
+    <option value="lower">lowercase</option>
+    <option value="upper">UPPERCASE</option>
+    <option value="camel">CamelCase</option>
+    <option value="random">RaNdOm</option>
+  </select>
+
+  <div id="ipLengthContainer">
+    <input type="number" id="ipLength" min="1" max="10" value="4" placeholder="IP Segment Count" />
+  </div>
+
+  <textarea id="customKeywords" rows="3" placeholder="Custom keywords (comma separated)"></textarea>
+
+  <button id="generateBtn">Generate Subdomain</button>
+  <div class="output" id="outputBox">Your generated subdomain will appear here.</div>
+  <button onclick="copyToClipboard()">Copy to Clipboard</button>
+
+  <h3>History</h3>
+  <div class="history" id="historyBox"></div>
+
+  <script type="module">
+    const historyKey = 'subdomainHistory';
+    let historyLog = JSON.parse(localStorage.getItem(historyKey)) || [];
+
+    function debounce(func, wait) {
+      let timeout;
+      return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+      };
+    }
+
+    function getRandomInt(min = 0, max = 10) {
+      if (window.crypto && window.crypto.getRandomValues) {
+        const range = max - min + 1;
+        const maxRange = 256;
+        const randomBuffer = new Uint8Array(1);
+        while (true) {
+          window.crypto.getRandomValues(randomBuffer);
+          if (randomBuffer[0] < Math.floor(maxRange / range) * range) {
+            return min + (randomBuffer[0] % range);
+          }
+        }
+      } else {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+    }
+
+    function parseCustomWords() {
+      const raw = document.getElementById("customKeywords").value.trim();
+      const cleaned = raw.split(",").map(w => w.trim()).filter(Boolean);
+      return cleaned.length ? cleaned : null;
+    }
+
+    function applyCase(str, style) {
+      switch (style) {
+        case 'upper': return str.toUpperCase();
+        case 'camel': return str.replace(/(?:^|[-_\\.])([a-z])/g, (_, c) => c.toUpperCase());
+        case 'random': return str.split('').map(c => Math.random() > 0.5 ? c.toUpperCase() : c.toLowerCase()).join('');
+        default: return str.toLowerCase();
+      }
+    }
+
+    function getRandomKeyword(sep, custom = null) {
+      const words = custom || ["sky","data","moon","void","cloud","dark","byte","fire","core","net","nova","zone","echo","alpha","omega"];
+      const count = Math.floor(Math.random() * 2) + 2;
+      return Array.from({ length: count }, () => words[Math.floor(Math.random() * words.length)]).join(sep);
+    }
+
+    function getRandomIPLike(sep, len) {
+      return Array.from({ length: len }, () => Math.floor(Math.random() * 256)).join(sep);
+    }
+
+    function getMixed(sep, len, custom = null) {
+      const words = custom || ["sky","data","moon","void","cloud","dark","byte","fire","core","net","nova","zone","echo","alpha","omega"];
+      return Array.from({ length: len }, () => Math.random() < 0.5 ? words[Math.floor(Math.random() * words.length)] : getRandomInt(0,10)).join(sep);
+    }
+
+    function updateHistoryUI() {
+      const box = document.getElementById("historyBox");
+      box.innerHTML = historyLog.map((item, i) => `
+        <div class="history-item">
+          <span>${i + 1}. ${item.text}</span>
+          <button class="pin-btn" data-index="${i}">${item.pinned ? '📌' : '📍'}</button>
+        </div>
+      `).join('');
+      localStorage.setItem(historyKey, JSON.stringify(historyLog));
+    }
+
+    function togglePin(index) {
+      historyLog[index].pinned = !historyLog[index].pinned;
+      updateHistoryUI();
+    }
+
+    function toggleIPLengthVisibility() {
+      const type = document.getElementById("genType").value;
+      document.getElementById("ipLengthContainer").style.display = (type === "numbers" || type === "mixed") ? 'block' : 'none';
+    }
+
+    function generateSubdomain() {
+      const domain = document.getElementById("mainDomain").value.trim();
+      if (!domain) {
+        alert("Please enter a main domain.");
+        return;
+      }
+
+      const type = document.getElementById("genType").value;
+      const sep = document.getElementById("separator").value;
+      const caseStyle = document.getElementById("caseStyle").value;
+      const len = parseInt(document.getElementById("ipLength").value) || 4;
+      const custom = parseCustomWords();
+
+      let sub;
+      if (type === "numbers") sub = getRandomIPLike(sep, len);
+      else if (type === "keywords") sub = getRandomKeyword(sep, custom);
+      else sub = getMixed(sep, len, custom);
+
+      const full = applyCase(`${sub}.${domain}`, caseStyle);
+      document.getElementById("outputBox").innerText = full;
+
+      historyLog.unshift({ text: full, pinned: false });
+      const pinned = historyLog.filter(h => h.pinned);
+      const unpinned = historyLog.filter(h => !h.pinned).slice(0, 10 - pinned.length);
+      historyLog = [...pinned, ...unpinned];
+      updateHistoryUI();
+    }
+
+    function copyToClipboard() {
+      const text = document.getElementById("outputBox").innerText;
+      navigator.clipboard.writeText(text).then(() => alert("Copied!"));
+    }
+
+    document.getElementById("genType").addEventListener("change", toggleIPLengthVisibility);
+    document.getElementById("historyBox").addEventListener("click", (e) => {
+      if (e.target.classList.contains("pin-btn")) {
+        const index = Number(e.target.dataset.index);
+        togglePin(index);
+      }
+    });
+
+    const debouncedGenerate = debounce(generateSubdomain, 300);
+    document.getElementById("generateBtn").addEventListener("click", debouncedGenerate);
+
+    toggleIPLengthVisibility();
+    updateHistoryUI();
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').then(() => {
+        console.log('Service Worker registered');
+      }).catch(err => {
+        console.warn('Service Worker registration failed:', err);
+      });
+    }
+  </script>
+</body>
+</html>
